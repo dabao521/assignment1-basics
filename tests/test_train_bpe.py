@@ -3,6 +3,9 @@ import time
 
 from .adapters import run_train_bpe
 from .common import FIXTURES_PATH, gpt2_bytes_to_unicode
+from bpe.bpe import pretokenization
+from collections import Counter
+import pytest
 
 
 def test_train_bpe_speed():
@@ -86,3 +89,96 @@ def test_train_bpe_special_tokens(snapshot):
             "merges": merges,
         },
     )
+
+def test_pretokenization_basic(tmp_path):
+    input_path = tmp_path / "test.txt"
+
+    input_path.write_text(
+        "hello world hello",
+        encoding = "utf-8")
+
+    actual = pretokenization(
+            input_path,
+            [b"<|endoftext|>"],
+            num_processes=1,
+    )
+
+    expected = Counter({
+        tuple(b"hello"): 1,
+        tuple(b" world"): 1,
+        tuple(b" hello"): 1,
+    })
+
+    assert actual == expected
+
+@pytest.mark.parametrize("num_processes", [1, 2, 4, 8])
+def test_pretokenization_multiple_processes(tmp_path, num_processes):
+    input_path = tmp_path / "test.txt"
+
+    input_path.write_text(
+            "hello world hello "
+            "<|endoftext|> "
+            "foo bar foo "
+            "<|endoftext|> "
+            "hello world",
+            encoding="utf-8",
+            )
+
+    actual = pretokenization(
+            input_path,
+            [b"<|endoftext|>"],
+            num_processes=num_processes,
+            )
+
+    expected = Counter({
+        tuple(b"hello"): 1,
+        tuple(b" hello"): 2,
+        tuple(b" "): 2,
+        tuple(b" world"): 2,
+        tuple(b" foo"): 2,
+        tuple(b" bar"): 1,
+        })
+
+    assert actual == expected
+
+def test_pretokenization_multiple_special_tokens(tmp_path):
+    input_path = tmp_path / "test.txt"
+
+    input_path.write_text(
+        "hello<|endoftext|>world<|endoftext|>hello",
+        encoding = "utf-8")
+
+    actual = pretokenization(
+            input_path,
+            [b"<|endoftext|>"],
+            num_processes=1,
+    )
+
+    expected = Counter({
+        tuple(b"hello"): 2,
+        tuple(b"world"): 1,
+    })
+
+    assert actual == expected
+
+def test_pretokenization_unicode(tmp_path):
+    input_path = tmp_path / "test.txt"
+
+    input_path.write_text(
+        "hello 你好 世界 café",
+        encoding = "utf-8")
+
+    actual = pretokenization(
+            input_path,
+            [b"<|endoftext|>"],
+            num_processes=1,
+    )
+
+    expected = Counter({
+        tuple("hello".encode("utf-8")): 1,
+        tuple(" 你好".encode("utf-8")): 1,
+        tuple(" 世界".encode("utf-8")): 1,
+        tuple(" café".encode("utf-8")): 1,
+    })
+
+    assert actual == expected
