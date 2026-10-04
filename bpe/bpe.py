@@ -205,7 +205,7 @@ class BPEEncoder:
     pair_freq: Counter[tuple[int,int]]
 
     # neighbor pair -> all of those words that contain this pair
-    pair_words: dict[tuple[int,int], set[int]]
+    pair_words: dict[tuple[int,int], Counter[int]]
 
     # max heap to pick up the mering tuple in logrith time
     max_heap: list[PairHeapEntry]
@@ -224,7 +224,7 @@ class BPEEncoder:
         # initialize the vocab
         self.vocab = {}
         for i in range(256):
-            self.vocab[i] = bytes(i)
+            self.vocab[i] = bytes([i])
 
         special_tokens_bytes: list[bytes] = [
             token.encode("utf-8") for token in special_tokens
@@ -255,13 +255,13 @@ class BPEEncoder:
 
         # intialize pair stastics
         self.pair_freq = Counter()
-        self.pair_words = defaultdict(set)
+        self.pair_words = defaultdict(Counter)
 
         for word_id, tokens in enumerate(self.words):
             for i in range(len(tokens)-1):
                 pair: tuple[int, int] = (tokens[i], tokens[i+1])
                 self.pair_freq[pair] += 1
-                self.pair_words[pair].add(word_id)
+                self.pair_words[pair][word_id]+=1
 
         # initialize the heap
         for pair, freq in self.pair_freq.items():
@@ -283,10 +283,10 @@ class BPEEncoder:
             (A, B) = best_pair
 
             # identify all words from pair_words
-            words: set[int] = self.pair_words[best_pair]
+            words: Counter[int] = self.pair_words[best_pair]
             assert words
 
-            for word_id in words:
+            for word_id, _ in enumerate(words):
                 # identify all non-overlapping spans
                 occurances: list[int] = self.find_spans(word_id, A, B)
                 assert occurances
@@ -341,10 +341,14 @@ class BPEEncoder:
 
 
     def update_new_pairs(self, new_pairs: list[tuple[int,int]], word_id: int):
+        # dedup the duplicate new pairs
+        updated_pairs: set[tuple[int,int]] = set()
         for _, new_pair in enumerate(new_pairs):
-            self.pair_freq[new_pair] += 1
-            self.pair_words[new_pair].add(word_id)
+            self.pair_freq[new_pair] += self.word_freq[word_id]
+            self.pair_words[new_pair][word_id]+=1
+            updated_pairs.add(new_pair)
 
+        for new_pair in updated_pairs:
             heapq.heappush(self.max_heap, PairHeapEntry(
                 self.pair_freq[new_pair],
                 new_pair,
@@ -352,13 +356,15 @@ class BPEEncoder:
 
     def update_old_pairs(self, old_pairs: list[tuple[int,int]], word_id: int):
         for _, pair in enumerate(old_pairs):
-            self.pair_freq[pair] -= 1
+            self.pair_freq[pair] -= self.word_freq[word_id]
             if self.pair_freq[pair] == 0:
                 del self.pair_freq[pair]
 
-            self.pair_words[pair].remove(word_id)
-            if not self.pair_words[pair]:
-                del self.pair_words[pair]
+            self.pair_words[pair][word_id]-=1
+            if self.pair_words[pair][word_id] == 0:
+                del self.pair_words[pair][word_id]
+                if not self.pair_words[pair]:
+                    del self.pair_words[pair]
 
     def find_spans(self, word_id: int, A: int, B: int)-> list[int]:
         tokens: list[int] = self.words[word_id]
