@@ -1,9 +1,11 @@
 import os
 from typing import BinaryIO
 from collections import Counter
+from collections import defaultdict
 import re
 import regex
 from multiprocessing import Pool
+import heapq
 
 GPT2_PATTERN_STR: str = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 GPT2_PATTERN: regex.Pattern[str] = regex.compile(GPT2_PATTERN_STR)
@@ -157,4 +159,218 @@ def pretokenization(
                 global_counter[token] += freq
 
     return global_counter
+
+class PairHeapEntry:
+    freq: int
+    pair: tuple[int,int]
+    vocab: dict[int, bytes]
+
+    def __init__(
+        self,
+        freq: int,
+        pair: tuple[int,int],
+        vocab: dict[int,bytes]
+    ):
+        self.freq = freq
+        self.pair = pair
+        self.vocab = vocab
+
+    def __lt__(self, other: "PairHeapEntry") -> bool:
+        if (self.freq != other.freq):
+            return self.freq > self.other.freq
+
+        self_bytes: tuple[bytes, bytes] = (
+            self.vocab[self.pair[0]],
+            self.vocab[self.pair[1]],
+        )
+
+        other_bytes: tuple[bytes, bytes] = (
+            other.vocab[other.pair[0]],
+            other.vocab[other.pair[1]]
+        )
+        return self_bytes > other_bytes
+
+class BPEEncoder:
+    """The class responsible apply BPE encoding given a raw text file"""
+    # token id -> bytes
+    vocab: dict[int, bytes]
+
+    # word idx -> list of token ids and each token id maps to a bytes
+    words: list[list[int]]
+
+    # word idx -> word freq
+    word_freq: list[int]
+
+    # neighbor pair -> its total freq
+    pair_freq: Counter[tuple[int,int]]
+
+    # neighbor pair -> all of those words that contain this pair
+    pair_words: dict[tuple[int,int], set[int]]
+
+    # max heap to pick up the mering tuple in logrith time
+    max_heap: list[PairHeapEntry]
+
+    # the order of neighboring bytes merges
+    merges: list[tuple[bytes,bytes]]
+
+    num_merges: int
+
+    def __init__(
+        self,
+        input_path: str | os.PathLike,
+        special_tokens: list[str],
+        vocab_size: int,
+    ):
+        # initialize the vocab
+        self.vocab = {}
+        for i in range(256):
+            self.vocab[i] = bytes(i)
+
+        special_tokens_bytes: list[bytes] = [
+            token.encode("utf-8") for token in special_tokens
+        ]
+        for token in special_tokens_bytes:
+            self.vocab[len(self.vocab)] = token
+
+        # number of merges is the number of times to merge tokens
+        assert vocab_size >= len(self.vocab)
+        self.merges = []
+        self.num_merges = vocab_size - len(self.vocab)
+
+        # pre-tokenize in parallel
+        num_cores: int = os.cpu_count()
+        pretokenized_counter: Counter[tuple[int,...]] = pretokenization(
+            input_path,
+            special_tokens_bytes,
+            num_cores,
+        )
+
+        self.words = []
+        self.word_freq = []
+        for token_tuple, freq in pretokenized_counter.items():
+            word_id = len(self.words)
+
+            self.words.append(list(token_tuple))
+            self.word_freq.append(freq)
+
+        # intialize pair stastics
+        self.pair_freq = Counter()
+        self.pair_words = defaultdict(set)
+
+        for word_id, tokens in enumerate(self.words):
+            for i in range(len(tokens)-1):
+                pair: tuple[int, int] = (tokens[i], tokens[i+1])
+                self.pair_freq[pair] += 1
+                self.pair_words[pair].add(word_id)
+
+        # initialize the heap
+        for pair, freq in self.pair_freq.items():
+            heapq.heappush(self.max_heap, PairHeapEntry(freq,pair,self.vocab))
+
+    def get_best_pair(self)-> tuple[int,int]:
+        while True:
+            entry = heapq.heappop(self.max_heap)
+
+            # skip stale entry
+            if self.pair_freq[entry.pair] != entry.freq:
+                continue
+            return entry.pair
+
+    def merge(self):
+        for _ in range(self.num_merges):
+            # find best pair
+            best_pair: tuple[int,int] = self.get_best_pair()
+            (A, B) = best_pair
+
+            # identify all words from pair_words
+            words: set[int] = self.pair_words[best_pair]
+            assert words
+
+            for word_id in words:
+                # identify all non-overlapping spans
+                occurances: list[int] = self.find_spans(word_id, A, B)
+                assert occurances
+
+                # old pairs: for each matching pair X,A,B,Y, the old pairs
+                # are [X,A], [A,B], [B,Y]
+                word: list[int] = words[word_id]
+                old_pairs: list[tuple[int]] = []
+                for _, occurance in enumerate(occurances): 
+                    if occurance > 0:
+                        old_pairs.append((word[occurance-1], word[occurance]))
+                    old_pairs.append((A,B))
+                    if occurance+2 < len(word):
+                        old_pairs.append((word[occurance+1], word[occurance+2]))
+                self.update_old_pairs(old_pairs, word_id)
+                
+                # new pairs + building a new word
+                # we can't find new pairs without knowing the currnt bytes wont
+                # be merge to next bytes. So for [X, A,B,Y], we iterate each bytes
+                # only when find (A,B), we add new pairs [X,AB], [AB,Y], note that
+                # X comes off the new_word last bytes
+                new_word: list[int] = []
+                new_pairs: list[tuple[int]] = []
+                AB_id = len(self.vocab) 
+                self.vocab[AB_id] = A+B
+                i_word: int = 0
+                while i_word < len(word):
+                    if (
+                        i_word+1<len(word)
+                        and word[i_word]==A
+                        and word[i_word+1]==B
+                    ):
+                        # found the matching pair
+                        if len(new_word) > 0:
+                            new_pair: tuple[int,int] = (
+                                new_word[len(new_word)-1],
+                                AB_id,
+                            )
+                            new_pairs.append(new_pair)
+
+                        new_word.append(AB_id)
+                        i_word+=2
+                    else:
+                        new_word.append(word[i_word])
+                        i_word+=1
+
+                self.update_new_pairs(new_pairs, word_id)
+                words[word_id] = new_word
+            
+            # track merges
+            self.merges.append((self.vocab[A], self.vocab[B]))
+
+
+    def update_new_pairs(self, new_pairs: list[tuple[int,int]], word_id: int):
+        for _, new_pair in enumerate(new_pairs):
+            self.pair_freq[new_pair] += 1
+            self.pair_words[new_pair].add(word_id)
+
+            heapq.heappush(self.max_heap, PairHeapEntry(
+                self.pair_freq[new_pair],
+                new_pair,
+                self.vocab))
+
+    def update_old_pairs(self, old_pairs: list[tuple[int,int]], word_id: int):
+        for _, pair in enumerate(old_pairs):
+            self.pair_freq[pair] -= 1
+            if self.pair_freq[pair] == 0:
+                del self.pair_freq[pair]
+
+            self.pair_words[pair].remove(word_id)
+            if not self.pair_words[pair]:
+                del self.pair_words[pair]
+
+    def find_spans(self, word_id: int, A: int, B: int)-> list[int]:
+        tokens: list[int] = self.words[word_id]
+        assert tokens
+        spans: list[int] = []
+
+        i = 0
+        while i < len(tokens)-1:
+            if tokens[i]==A and tokens[i+1]==B:
+                spans.append(i)
+                i+=2
+            else:
+                i+=1
+        return spans
 
