@@ -177,7 +177,7 @@ class PairHeapEntry:
 
     def __lt__(self, other: "PairHeapEntry") -> bool:
         if (self.freq != other.freq):
-            return self.freq > self.other.freq
+            return self.freq > other.freq
 
         self_bytes: tuple[bytes, bytes] = (
             self.vocab[self.pair[0]],
@@ -260,10 +260,11 @@ class BPEEncoder:
         for word_id, tokens in enumerate(self.words):
             for i in range(len(tokens)-1):
                 pair: tuple[int, int] = (tokens[i], tokens[i+1])
-                self.pair_freq[pair] += 1
+                self.pair_freq[pair] += self.word_freq[word_id]
                 self.pair_words[pair][word_id]+=1
 
         # initialize the heap
+        self.max_heap = []
         for pair, freq in self.pair_freq.items():
             heapq.heappush(self.max_heap, PairHeapEntry(freq,pair,self.vocab))
 
@@ -272,7 +273,7 @@ class BPEEncoder:
             entry = heapq.heappop(self.max_heap)
 
             # skip stale entry
-            if self.pair_freq[entry.pair] != entry.freq:
+            if self.pair_freq.get(entry.pair,0) != entry.freq:
                 continue
             return entry.pair
 
@@ -281,26 +282,33 @@ class BPEEncoder:
             # find best pair
             best_pair: tuple[int,int] = self.get_best_pair()
             (A, B) = best_pair
+            AB_id = len(self.vocab)
+            self.vocab[AB_id] = self.vocab[A]+self.vocab[B]
 
             # identify all words from pair_words
-            words: Counter[int] = self.pair_words[best_pair]
-            assert words
+            pwords: Counter[int] = self.pair_words[best_pair]
+            assert pwords
 
-            for word_id, _ in enumerate(words):
+            for word_id, _ in pwords.items():
                 # identify all non-overlapping spans
                 occurances: list[int] = self.find_spans(word_id, A, B)
                 assert occurances
 
                 # old pairs: for each matching pair X,A,B,Y, the old pairs
                 # are [X,A], [A,B], [B,Y]
-                word: list[int] = words[word_id]
-                old_pairs: list[tuple[int]] = []
+                word: list[int] = self.words[word_id]
+                old_pairs_positions: set[int] = set()
                 for _, occurance in enumerate(occurances): 
                     if occurance > 0:
-                        old_pairs.append((word[occurance-1], word[occurance]))
-                    old_pairs.append((A,B))
+                        old_pairs_positions.add(occurance-1)
+                    old_pairs_positions.add(occurance)
                     if occurance+2 < len(word):
-                        old_pairs.append((word[occurance+1], word[occurance+2]))
+                        old_pairs_positions.add(occurance+1)
+
+                old_pairs: list[tuple[int, int]] = [
+                    (word[i], word[i+1])
+                    for i in old_pairs_positions
+                ]
                 self.update_old_pairs(old_pairs, word_id)
                 
                 # new pairs + building a new word
@@ -309,10 +317,10 @@ class BPEEncoder:
                 # only when find (A,B), we add new pairs [X,AB], [AB,Y], note that
                 # X comes off the new_word last bytes
                 new_word: list[int] = []
-                new_pairs: list[tuple[int]] = []
-                AB_id = len(self.vocab) 
-                self.vocab[AB_id] = A+B
+                new_pairs: list[tuple[int, int]] = []
+                
                 i_word: int = 0
+                found_match: bool = False
                 while i_word < len(word):
                     if (
                         i_word+1<len(word)
@@ -329,12 +337,20 @@ class BPEEncoder:
 
                         new_word.append(AB_id)
                         i_word+=2
+                        found_match = True
                     else:
                         new_word.append(word[i_word])
+                        if found_match:
+                            new_pair: tuple[int,int] = (
+                                AB_id,
+                                word[i_word],
+                            )
+                            new_pairs.append(new_pair)
                         i_word+=1
+                        found_match = False
 
                 self.update_new_pairs(new_pairs, word_id)
-                words[word_id] = new_word
+                self.words[word_id] = new_word
             
             # track merges
             self.merges.append((self.vocab[A], self.vocab[B]))
