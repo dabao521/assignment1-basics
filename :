@@ -224,7 +224,7 @@ class BPEEncoder:
         # initialize the vocab
         self.vocab = {}
         for i in range(256):
-            self.vocab[i] = bytes([i])
+            self.vocab[i] = bytes(i)
 
         special_tokens_bytes: list[bytes] = [
             token.encode("utf-8") for token in special_tokens
@@ -261,7 +261,7 @@ class BPEEncoder:
             for i in range(len(tokens)-1):
                 pair: tuple[int, int] = (tokens[i], tokens[i+1])
                 self.pair_freq[pair] += 1
-                self.pair_words[pair][word_id]+=1
+                self.pair_words[pair].add(word_id)
 
         # initialize the heap
         for pair, freq in self.pair_freq.items():
@@ -283,10 +283,10 @@ class BPEEncoder:
             (A, B) = best_pair
 
             # identify all words from pair_words
-            words: Counter[int] = self.pair_words[best_pair]
+            words: set[int] = self.pair_words[best_pair]
             assert words
 
-            for word_id, _ in enumerate(words):
+            for word_id in words:
                 # identify all non-overlapping spans
                 occurances: list[int] = self.find_spans(word_id, A, B)
                 assert occurances
@@ -345,7 +345,7 @@ class BPEEncoder:
         updated_pairs: set[tuple[int,int]] = set()
         for _, new_pair in enumerate(new_pairs):
             self.pair_freq[new_pair] += self.word_freq[word_id]
-            self.pair_words[new_pair][word_id]+=1
+            self.pair_words[new_pair].add(word_id)
             updated_pairs.add(new_pair)
 
         for new_pair in updated_pairs:
@@ -360,11 +360,9 @@ class BPEEncoder:
             if self.pair_freq[pair] == 0:
                 del self.pair_freq[pair]
 
-            self.pair_words[pair][word_id]-=1
-            if self.pair_words[pair][word_id] == 0:
-                del self.pair_words[pair][word_id]
-                if not self.pair_words[pair]:
-                    del self.pair_words[pair]
+            self.pair_words[pair].remove(word_id)
+            if not self.pair_words[pair]:
+                del self.pair_words[pair]
 
     def find_spans(self, word_id: int, A: int, B: int)-> list[int]:
         tokens: list[int] = self.words[word_id]
