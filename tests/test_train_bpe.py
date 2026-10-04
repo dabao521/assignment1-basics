@@ -175,10 +175,10 @@ def test_pretokenization_unicode(tmp_path):
     )
 
     expected = Counter({
-        tuple("hello".encode("utf-8")): 1,
-        tuple(" 你好".encode("utf-8")): 1,
-        tuple(" 世界".encode("utf-8")): 1,
-        tuple(" café".encode("utf-8")): 1,
+        tuple(b"hello"): 1,
+        tuple(" 你好".encode()): 1,
+        tuple(" 世界".encode()): 1,
+        tuple(" café".encode()): 1,
     })
 
     assert actual == expected
