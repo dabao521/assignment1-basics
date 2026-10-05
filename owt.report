@@ -1,0 +1,25 @@
+Pretokenization: 110.99s
+BPE merging: 1084.84s
+Training time: 1233.24 seconds
+Vocabulary size: 32000
+Number of merges: 31743
+Longest token: b'\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82\xc3\x83\xc3\x82'
+Longest token length: 64
+     1234.10 real      2473.47 user        12.78 sys
+         20514488320  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+             2381428  page reclaims
+                 647  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                   1  messages sent
+                   1  messages received
+                   1  signals received
+               12261  voluntary context switches
+              411176  involuntary context switches
+           113359974  instructions retired
+            43888004  cycles elapsed
+            11698584  peak memory footprint

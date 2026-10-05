@@ -1,0 +1,5 @@
+Pretokenization: 18.13s
+BPE merging: 3.23s
+Training time: 21.52 seconds
+Vocabulary size: 10000
+Number of merges: 9743
