@@ -4,6 +4,7 @@ import time
 from .adapters import run_train_bpe
 from .common import FIXTURES_PATH, gpt2_bytes_to_unicode
 from bpe.bpe import pretokenization
+from bpe.bpe import BPEEncoder
 from collections import Counter
 import pytest
 
@@ -182,3 +183,119 @@ def test_pretokenization_unicode(tmp_path):
     })
 
     assert actual == expected
+
+# unit tests for BPEEncoder
+
+def test_BPEEncoder_basic(tmp_path):
+    input_path = tmp_path / "test.txt"
+    input_path.write_text(
+        "ababx",
+        encoding = "utf-8",
+    )
+
+    # only merge 1 round
+    encoder = BPEEncoder(
+        input_path = input_path,
+        special_tokens = ["<|endoftext|>"],
+        vocab_size = 258,
+    )
+
+    encoder.merge()
+
+    # (a,b) is merged , (97,98)
+    assert encoder.vocab[257] == b"ab"
+    assert encoder.words == [[257,257,120]]
+    assert encoder.merges == [(b"a", b"b")]
+    assert encoder.pair_freq[(257,257)] == 1
+    assert encoder.pair_freq[(257, 120)] == 1
+
+def test_BPEEncoder_boundary(tmp_path):
+    input_path = tmp_path / "test.txt"
+    input_path.write_text(
+        "xaaaay",
+        encoding = "utf-8",
+    )
+
+    # only merge 1 round
+    encoder = BPEEncoder(
+        input_path = input_path,
+        special_tokens = ["<|endoftext|>"],
+        vocab_size = 258,
+    )
+
+    encoder.merge()
+
+    # x a a a a y -> x aa aa y
+    # x=120, a=97, y=121, aa=257
+    assert encoder.words == [[120,257,257,121]]
+    assert encoder.vocab[257] == b"aa"
+
+    assert (120,97) not in encoder.pair_freq
+    assert (97,97) not in encoder.pair_freq
+    assert (97,121) not in encoder.pair_freq
+
+    assert encoder.pair_freq[(120,257)] == 1
+    assert encoder.pair_freq[(257,257)] == 1
+    assert encoder.pair_freq[(257,121)] == 1
+
+def test_BPEEncoder_AAAA(tmp_path):
+    input_path = tmp_path / "test.txt"
+    input_path.write_text(
+        "xaaaay",
+        encoding = "utf-8",
+    )
+
+    # only merge 1 round
+    encoder = BPEEncoder(
+        input_path = input_path,
+        special_tokens = ["<|endoftext|>"],
+        vocab_size = 258,
+    )
+
+    encoder.merge()
+
+    # x a a a a y -> x aa aa y
+    # x=120, a=97, y=121, aa=257
+    assert encoder.words == [[120,257,257,121]]
+    assert encoder.vocab[257] == b"aa"
+
+    assert (120,97) not in encoder.pair_freq
+    assert (97,97) not in encoder.pair_freq
+    assert (97,121) not in encoder.pair_freq
+
+    assert encoder.pair_freq[(120,257)] == 1
+    assert encoder.pair_freq[(257,257)] == 1
+    assert encoder.pair_freq[(257,121)] == 1
+
+def test_BPEEncoder_weights(tmp_path):
+    input_path = tmp_path / "test.txt"
+    input_path.write_text(
+        "abab<|endoftext|>abab<|endoftext|>ac<|endoftext|>ac<|endoftext|>ac",
+        encoding = "utf-8",
+    )
+
+    # only merge 1 round
+    encoder = BPEEncoder(
+        input_path = input_path,
+        special_tokens = ["<|endoftext|>"],
+        vocab_size = 258,
+    )
+
+    # there are two words , abab and ac
+    assert len(encoder.words) == 2
+    assert encoder.word_freq == [2, 3]
+
+    assert encoder.pair_freq[(97,98)] == 4
+    assert encoder.pair_freq[(98,97)] == 2
+    assert encoder.pair_freq[(97,99)] == 3
+
+    assert encoder.pair_words[(97,98)][0] == 2
+    assert encoder.pair_words[(97, 99)][1] == 1
+
+    encoder.merge()
+
+    # a b is merged to ab
+    assert encoder.merges == [(b"a", b"b")]
+    assert encoder.vocab[257] == b"ab"
+
+    assert encoder.pair_freq[(257,257)] == 2

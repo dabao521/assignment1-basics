@@ -286,10 +286,10 @@ class BPEEncoder:
             self.vocab[AB_id] = self.vocab[A]+self.vocab[B]
 
             # identify all words from pair_words
-            pwords: Counter[int] = self.pair_words[best_pair]
+            pwords: list[int] = list(self.pair_words[best_pair])
             assert pwords
 
-            for word_id, _ in pwords.items():
+            for word_id in pwords:
                 # identify all non-overlapping spans
                 occurances: list[int] = self.find_spans(word_id, A, B)
                 assert occurances
