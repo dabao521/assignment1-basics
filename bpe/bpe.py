@@ -6,6 +6,7 @@ import re
 import regex
 from multiprocessing import Pool
 import heapq
+import time
 
 GPT2_PATTERN_STR: str = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
 GPT2_PATTERN: regex.Pattern[str] = regex.compile(GPT2_PATTERN_STR)
@@ -239,11 +240,14 @@ class BPEEncoder:
 
         # pre-tokenize in parallel
         num_cores: int = os.cpu_count()
+        start_time: float = time.perf_counter()
         pretokenized_counter: Counter[tuple[int,...]] = pretokenization(
             input_path,
             special_tokens_bytes,
             num_cores,
         )
+        pretokenization_time: float = time.perf_counter() - start_time
+        print(f"Pretokenization: {pretokenization_time:.2f}s")
 
         self.words = []
         self.word_freq = []
@@ -278,7 +282,21 @@ class BPEEncoder:
             return entry.pair
 
     def merge(self):
-        for _ in range(self.num_merges):
+        start_time: float = time.perf_counter()
+        for merge_idx in range(self.num_merges):
+            # DEBUG
+            # print("merge_idx=", merge_idx, ", e,r:", self.pair_freq.get((ord("e"), ord("r")), 0))
+            # print("merge_idx=", merge_idx, ", space,s:", self.pair_freq.get((ord(" "), ord("s")), 0))
+
+            # print("heap e,r:")
+            # for entry in self.max_heap:
+            #     if entry.pair == (ord("e"), ord("r")):
+            #         print(entry.freq)
+            # print("heap space,s:")
+            # for entry in self.max_heap:
+            #     if entry.pair == (ord(" "), ord("s")):
+            #         print(entry.freq)
+
             # find best pair
             best_pair: tuple[int,int] = self.get_best_pair()
             (A, B) = best_pair
@@ -354,6 +372,8 @@ class BPEEncoder:
             
             # track merges
             self.merges.append((self.vocab[A], self.vocab[B]))
+        merge_time: float = time.perf_counter() - start_time
+        print(f"BPE merging: {merge_time:.2f}s")
 
 
     def update_new_pairs(self, new_pairs: list[tuple[int,int]], word_id: int):
@@ -371,16 +391,26 @@ class BPEEncoder:
                 self.vocab))
 
     def update_old_pairs(self, old_pairs: list[tuple[int,int]], word_id: int):
+        updated_pairs: set[tuple[int, int]] = set()
         for _, pair in enumerate(old_pairs):
             self.pair_freq[pair] -= self.word_freq[word_id]
             if self.pair_freq[pair] == 0:
                 del self.pair_freq[pair]
+            else:
+                updated_pairs.add(pair)
 
             self.pair_words[pair][word_id]-=1
             if self.pair_words[pair][word_id] == 0:
                 del self.pair_words[pair][word_id]
                 if not self.pair_words[pair]:
                     del self.pair_words[pair]
+
+        for new_pair in updated_pairs:
+            heapq.heappush(self.max_heap, PairHeapEntry(
+                self.pair_freq[new_pair],
+                new_pair,
+                self.vocab))
+
 
     def find_spans(self, word_id: int, A: int, B: int)-> list[int]:
         tokens: list[int] = self.words[word_id]
