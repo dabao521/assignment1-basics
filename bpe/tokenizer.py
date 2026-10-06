@@ -34,10 +34,6 @@ class Tokenizer:
     min_heap: [tuple(int, Node, Node)]
     head: Node | None
 
-    byte_encoder: dict[int, str]
-    byte_decoder: dict[str, int]
-
-
     def __init__(
         self,
         vocab: dict[int, bytes],
@@ -61,11 +57,6 @@ class Tokenizer:
         }
         self.min_heap = []
         self.head = None
-
-        self.byte_encoder = Tokenizer.bytes_to_unicode()
-        self.byte_decoder = {
-            v: k for k, v in self.byte_encoder.items()
-        }
 
     def encode(self, text: str) -> list[int]:
         # 1. split text based on special_tokens if any
@@ -148,13 +139,9 @@ class Tokenizer:
         self.head = None
 
     def decode(self, ids: list[int]) -> str:
-        text: str = "".join(
-            "".join(self.byte_encoder[b] for b in self.vocab[token_id])
-            for token_id in ids
-        )
-        token_bytes: bytes = bytes(
-            self.byte_decoder[c]
-            for c in text
+        token_bytes: bytes = b"".join(
+                self.vocab[token_id]
+                for token_id in ids
         )
         return token_bytes.decode("utf-8", errors="replace")
 
@@ -250,23 +237,4 @@ class Tokenizer:
         node.prev_node = prev_node
         node.next_node.prev_node = node
         node.prev_node.next_node = node
-
-    @staticmethod
-    def bytes_to_unicode() -> dict[int, str]:
-        bs: list[int] = (
-            list(range(ord("!"), ord("~") + 1))
-            + list(range(ord("¡"), ord("¬") + 1))
-            + list(range(ord("®"), ord("ÿ") + 1))
-        )
-
-        cs: list[int] = bs.copy()
-        n: int = 0
-
-        for b in range(256):
-            if b not in bs:
-                bs.append(b)
-                cs.append(256 + n)
-                n += 1
-
-        return dict(zip(bs, (chr(c) for c in cs)))
 
