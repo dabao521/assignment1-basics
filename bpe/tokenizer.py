@@ -22,6 +22,48 @@ class Node:
     def __lt__(self, other: Node)->bool:
         return id(self) < id(other)
 
+    @staticmethod
+    def append_node(head: Node | None, node: Node) -> Node:
+        if head is None:
+           return node 
+        else:
+            node.next_node = head
+            node.prev_node = head.prev_node
+            node.next_node.prev_node = node
+            node.prev_node.next_node = node
+            return head
+
+    @staticmethod
+    def remove_node(node:Node):
+        node.next_node.prev_node = node.prev_node
+        node.prev_node.next_node = node.next_node
+        node.prev_node = node
+        node.next_node = node
+
+    @staticmethod
+    def insert_node(prev_node:Node, node:Node):
+        node.next_node = prev_node.next_node
+        node.prev_node = prev_node
+        node.next_node.prev_node = node
+        node.prev_node.next_node = node
+
+    @staticmethod
+    def concat(head1: Node | None, head2: Node | None)->Node:
+        if head1 is None:
+            return head2
+        if head2 is None:
+            return head1
+
+        tail1 = head1.prev_node
+        tail2 = head2.prev_node
+
+        tail1.next_node = head2
+        tail1.next_node.prev_node = tail1
+        tail2.next_node = head1
+        tail2.next_node.prev_node = tail2
+
+        return head1
+
 class Tokenizer:
     vocab: dict[int, bytes]
     merges: list[tuple[bytes, bytes]]
@@ -30,9 +72,6 @@ class Tokenizer:
     # Misc datastructures
     vocab_reverse: dict[bytes, int]
     merge_ranks: dict[tuple[bytes,bytes], int]
-
-    min_heap: [tuple(int, Node, Node)]
-    head: Node | None
 
     def __init__(
         self,
@@ -55,14 +94,10 @@ class Tokenizer:
             pair: rank
             for rank, pair in enumerate(self.merges)
         }
-        self.min_heap = []
-        self.head = None
 
     def encode(self, text: str) -> list[int]:
         # 1. split text based on special_tokens if any
-        # and intialized the min_heap and the linked list
-        self.reset()
-
+        merge_head: Node | None = None
         if (self.special_tokens is not None
             and self.special_tokens
            ):
@@ -71,44 +106,35 @@ class Tokenizer:
             )
             # append nodes for all chunks
             last_end: int = 0
-            local_head: Node | None = None
+
             for match in pattern.finditer(text):
                 chunk_str: str = text[last_end:match.start()]
-                self.append_nodes(chunk_str)
+                local_head = self.encode_impl(chunk_str)
                 # append the special token
                 special_token: bytes = match.group().encode("utf-8")
                 last_end = match.end()
 
                 # insert the head if it is not empty
-                if self.head is not None:
-                    if local_head is None:
-                        local_head = self.head
-                    else:
-                        Tokenizer.concat(local_head, self.head)
+                merge_head = Node.concat(merge_head, local_head)
 
                 # insert the special token
-                local_head = Tokenizer.append_node(local_head, Node(special_token))
+                merge_head = Node.append_node(merge_head, Node(special_token))
 
             # handle the last chunk if any
             if last_end < len(text):
-                self.append_nodes(text[last_end:])
-                if self.head is not None:
-                    if local_head is None:
-                        local_head = self.head
-                    else:
-                        Tokenizer.concat(local_head, self.head)
-            self.head = local_head
+                local_head = self.encode_impl(text[last_end:])
+                merge_head = Node.concat(merge_head, local_head)
         else:
-            self.append_nodes(text)
+            merge_head = self.encode_impl(text)
 
         # 3. now all pairs merged in the head chain, then iterate the chain and
         # looup encoded integer from the node token bytes.
         encoding: list[int] = []
-        cur: Node | None = self.head
+        cur: Node | None = merge_head
 
         while (
             cur is not None
-            and cur.next_node is not self.head
+            and cur.next_node is not merge_head
             ):
             encoding.append(self.vocab_reverse[cur.token])
             cur = cur.next_node
@@ -117,26 +143,9 @@ class Tokenizer:
             encoding.append(self.vocab_reverse[cur.token])
         return encoding
 
-    @staticmethod
-    def concat(head1: Node, head2: Node):
-        assert head1 is not None
-        assert head2 is not None
-
-        tail1 = head1.prev_node
-        tail2 = head2.prev_node
-
-        tail1.next_node = head2
-        tail1.next_node.prev_node = tail1
-        tail2.next_node = head1
-        tail2.next_node.prev_node = tail2
-
     def encode_iterable(self, iterable: Iterable[str]) -> Iterator[int]:
         for text in iterable:
             yield from self.encode(text)
-
-    def reset(self):
-        self.min_heap.clear()
-        self.head = None
 
     def decode(self, ids: list[int]) -> str:
         token_bytes: bytes = b"".join(
@@ -145,13 +154,14 @@ class Tokenizer:
         )
         return token_bytes.decode("utf-8", errors="replace")
 
-    def merge(self):
-        while self.min_heap:
-            rank,node,next_node = heapq.heappop(self.min_heap)
+    def merge(self, head: Node, min_heap: [tuple(int, Node, Node)])->Node:
+        while min_heap:
+            rank,node,next_node = heapq.heappop(min_heap)
+            # the node can't be at the end or its remembered
+            # pair nodes have been removed
             if (node.next_node is node
-                or node.next_node is self.head
+                or node.next_node is head
                 or node.next_node is not next_node):
-                # invalid node
                 continue
             
             key: tuple[bytes, bytes] = (node.token, node.next_node.token)
@@ -161,42 +171,52 @@ class Tokenizer:
 
             
             # insert first
-            self.insert_node(node.next_node, new_node)
+            Node.insert_node(node.next_node, new_node)
 
             remove_node1 = node
             remove_node2 = node.next_node
-            self.remove_node(remove_node1)
-            self.remove_node(remove_node2)
+            Node.remove_node(remove_node1)
+            Node.remove_node(remove_node2)
 
             # if we just removed the head, then update the head
-            if remove_node1 is self.head:
-                self.head = new_node
+            if remove_node1 is head:
+                head = new_node
 
             # find new piars if there is any
-            if new_node.next_node is not self.head:
-                self.update_heap(new_node, new_node.next_node)
+            if new_node.next_node is not head:
+                self.update_heap(new_node, new_node.next_node, min_heap)
 
-            if new_node is not self.head:
-                self.update_heap(new_node.prev_node, new_node)
+            if new_node is not head:
+                self.update_heap(new_node.prev_node, new_node, min_heap)
+        return head
 
-    def update_heap(self, node1: Node, node2: Node):
+    def update_heap(
+        self,
+        node1: Node,
+        node2: Node,
+        min_heap: [tuple(int, Node, Node)]):
         key: tuple[bytes,bytes] = (node1.token, node2.token)
         if key in self.merge_ranks:
             heapq.heappush(
-                self.min_heap,
+                min_heap,
                 (self.merge_ranks[key], node1, node2)
             )
 
-
-    def append_nodes(self, text:str):
-        local_head: Node | None = None
+    def encode_impl(self, text:str)-> Node:
+        """
+        encoding the input text into a double linked list node. Merges are applied
+        based on the mergs mapping
+        """
+        merge_head: Node | None = None
         for match in GPT2_PATTERN.finditer(text):
-            self.reset()
+            local_head : Node | Node = None
+            min_heap: [tuple(int, Node, Node)] = []
+
             token: bytes = match.group().encode("utf-8")
             # each byte deserves its own node
             for b in token:
                 node: Node = Node(bytes([b]))
-                self.head = Tokenizer.append_node(self.head, node)
+                local_head = Node.append_node(local_head, node)
 
                 # validate if there is a pair so we need to push onto
                 # the min_heap
@@ -204,37 +224,11 @@ class Tokenizer:
                     key: tuple[bytes, bytes] = (node.prev_node.token, node.token)
                     if key in self.merge_ranks:
                         heapq.heappush(
-                            self.min_heap,
+                            min_heap,
                             (self.merge_ranks[key], node.prev_node, node)
                         )
-            self.merge()
-            if self.head is not None:
-                if local_head is None:
-                    local_head = self.head
-                else:
-                    Tokenizer.concat(local_head, self.head)
-        self.head = local_head
-
-    @staticmethod
-    def append_node(head: Node | None, node: Node) -> Node:
-        if head is None:
-           return node 
-        else:
-            node.next_node = head
-            node.prev_node = head.prev_node
-            node.next_node.prev_node = node
-            node.prev_node.next_node = node
-            return head
-
-    def remove_node(self, node:Node):
-        node.next_node.prev_node = node.prev_node
-        node.prev_node.next_node = node.next_node
-        node.prev_node = node
-        node.next_node = node
-
-    def insert_node(self, prev_node:Node, node:Node):
-        node.next_node = prev_node.next_node
-        node.prev_node = prev_node
-        node.next_node.prev_node = node
-        node.prev_node.next_node = node
+            assert local_head is not None, "gpt2 matched an empty string"
+            local_head = self.merge(local_head, min_heap)
+            merge_head = Node.concat(merge_head, local_head)
+        return merge_head
 
