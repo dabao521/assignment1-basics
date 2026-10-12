@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 
 from bpe.tokenizer import Tokenizer
-from tokenizer_experiments import TinyStoreis_tokenizer
+# from tokenizer_experiments import TinyStoreis_tokenizer
 from tokenizer_experiments import OWT_tokenizer
 
 def debug_decode(
