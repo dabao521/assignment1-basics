@@ -52,3 +52,32 @@ def gpt2_bytes_to_unicode() -> dict[int, str]:
     characters = [chr(n) for n in cs]
     d = dict(zip(bs, characters))
     return d
+
+def first_10_docs(input_filepath: str) -> list[str]:
+    docs: list[str] = []
+    spliter: bytes = b"<|endoftext|>"
+    buffer: bytes = b""
+
+    with open(input_filepath, "rb") as f:
+        while len(docs) < 10:
+            # read 1 MB string into the buffer
+            chunk:bytes = f.read(1024 * 1024)
+
+            # end of the file
+            if not chunk:
+                break
+
+            buffer += chunk
+
+            # now try to add to the docs
+            while (
+                spliter in buffer
+                and len(docs) < 10
+            ):
+                doc_bytes, buffer = buffer.split(spliter, 1)
+                doc_str = doc_bytes.decode("utf-8")
+                # print(" Found doc ", doc_str)
+                docs.append(doc_str)
+    return docs
+
+

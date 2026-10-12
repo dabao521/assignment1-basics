@@ -11,6 +11,7 @@ import tiktoken
 
 from .adapters import get_tokenizer
 from .common import FIXTURES_PATH, gpt2_bytes_to_unicode
+from bpe.tokenizer import Tokenizer
 
 VOCAB_PATH = FIXTURES_PATH / "gpt2_vocab.json"
 MERGES_PATH = FIXTURES_PATH / "gpt2_merges.txt"
@@ -462,3 +463,26 @@ def _encode(tokenizer, text):
     for just this function. We set the memory limit to 1MB.
     """
     return tokenizer.encode(text)
+
+def test_tokenizer_serialize_deserialize_roundtrip(tmp_path):
+    vocab_filepath = tmp_path / "vocab"
+    merges_filepath = tmp_path / "merges"
+    
+    vocab: dict[int, bytes] = {
+        i: bytes([i])
+        for i in range(256)
+    }
+
+    merges: list[tuple[bytes, bytes]] = [
+        (bytes([i]), bytes([i]))
+        for i in range(256)
+    ]
+
+    Tokenizer.to_files(vocab_filepath, merges_filepath, vocab, merges)
+
+    tokenizer = Tokenizer.from_files(vocab_filepath, merges_filepath, None)
+
+    assert tokenizer.vocab == vocab
+    assert tokenizer.merges == merges
+
+

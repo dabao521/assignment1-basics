@@ -2,6 +2,7 @@ from pathlib import Path
 import time
 
 from tests.adapters import run_train_bpe
+from bpe.tokenizer import Tokenizer
 
 
 def main() -> None:
@@ -29,6 +30,16 @@ def main() -> None:
     print(f"Number of merges: {len(merges)}")
     print(f"Longest token: {longest_token!r}")
     print(f"Longest token length: {len(longest_token)}")
+
+    vocab_path = Path("data/owt_train.vocab")
+    merges_path = Path("data/owt_train.merges")
+
+    Tokenizer.to_files(
+        str(vocab_path.absolute()),
+        str(merges_path.absolute()),
+        vocab,
+        merges,
+    )
 
 
 if __name__ == "__main__":

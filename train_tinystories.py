@@ -2,6 +2,7 @@ from pathlib import Path
 import time
 
 from tests.adapters import run_train_bpe
+from bpe.tokenizer import Tokenizer
 
 
 def main() -> None:
@@ -20,6 +21,16 @@ def main() -> None:
     print(f"Training time: {elapsed:.2f} seconds")
     print(f"Vocabulary size: {len(vocab)}")
     print(f"Number of merges: {len(merges)}")
+
+    vocab_path = Path("data/TinyStoriesV2-GPT4-train.vocab")
+    merges_path = Path("data/TinyStoriesV2-GPT4-train.merges")
+
+    Tokenizer.to_files(
+        str(vocab_path.absolute()),
+        str(merges_path.absolute()),
+        vocab,
+        merges,
+    )
 
 
 if __name__ == "__main__":

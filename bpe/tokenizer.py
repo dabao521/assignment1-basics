@@ -3,6 +3,7 @@ import heapq
 import regex
 from collections.abc import Iterable
 from collections.abc import Iterator
+import pickle
 
 from bpe.bpe import GPT2_PATTERN
 
@@ -153,6 +154,38 @@ class Tokenizer:
                 for token_id in ids
         )
         return token_bytes.decode("utf-8", errors="replace")
+    
+    @classmethod
+    def from_files(
+        cls,
+        vocab_filepath: str,
+        merges_filepath: str,
+        special_tokens: list[str] | None =None,
+    )->Tokenizer:
+        vocab: dict[int, bytes] = {}
+        merges: list[tuple[bytes, bytes]] = []
+
+        with open(vocab_filepath, "rb") as f:
+            vocab = pickle.load(f)
+
+        with open(merges_filepath, "rb") as f:
+            merges = pickle.load(f)
+
+        return cls(vocab, merges, special_tokens)
+
+    @staticmethod
+    def to_files(
+        vocab_filepath: str,
+        merges_filepath: str,
+        vocab: dict[int,bytes],
+        merges: list[tuple[bytes,bytes]],
+        ):
+        with open(vocab_filepath, "wb") as f:
+            pickle.dump(vocab, f)
+
+        with open(merges_filepath, "wb") as f:
+            pickle.dump(merges, f)
+
 
     def merge(self, head: Node, min_heap: [tuple(int, Node, Node)])->Node:
         while min_heap:
