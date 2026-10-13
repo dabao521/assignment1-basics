@@ -14,6 +14,7 @@ from building_blocks.linear_module import LinearModule
 from building_blocks.embedding import Embedding
 from building_blocks.rmsnorm import RMSNormModule
 from building_blocks.swiglu import SwiGLUModule
+from building_blocks.rope import RoPEModule
 
 def run_linear(
     d_in: int,
@@ -226,7 +227,9 @@ def run_rope(
     Returns:
         Float[Tensor, " ... sequence_length d_k"]: Tensor with RoPEd input.
     """
-    raise NotImplementedError
+    module = RoPEModule(theta, d_k, max_seq_len)
+
+    return module(in_query_or_key, token_positions)
 
 
 def run_transformer_block(
