@@ -18,6 +18,7 @@ from building_blocks.rope import RoPEModule
 from building_blocks.common import softmax, scaled_dot_product_attention
 from building_blocks.multihead_attenion import MultiheadSelfAttentionModule
 from building_blocks.transformer_block import TransformerBlock
+from building_blocks.transformer_lm import TransformerLM
 
 def run_linear(
     d_in: int,
@@ -436,8 +437,58 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    module = TransformerLM(
+        vocab_size,
+        context_length,
+        d_model,
+        num_layers,
+        num_heads,
+        d_ff,
+        rope_theta,
+    )
 
+    # replace weights
+    state_dict: dict[str, Tensor] = {}
+
+    state_dict["input_embedding.embedding"] = weights["token_embeddings.weight"]
+
+    for i in range(num_layers):
+        prefix: str = f"layers.{i}"
+        target: str = f"blocks.{i}"
+
+        state_dict[f"{target}.multi_head_self_attention.Wq.weight"]=weights[
+            f"{prefix}.attn.q_proj.weight"
+        ]
+        state_dict[f"{target}.multi_head_self_attention.Wk.weight"]=weights[
+            f"{prefix}.attn.k_proj.weight"
+        ]
+        state_dict[f"{target}.multi_head_self_attention.Wv.weight"]=weights[
+            f"{prefix}.attn.v_proj.weight"
+        ]
+        state_dict[f"{target}.multi_head_self_attention.Wo.weight"]=weights[
+            f"{prefix}.attn.output_proj.weight"
+        ]
+        state_dict[f"{target}.rmsnorm1.g"]=weights[
+            f"{prefix}.ln1.weight"
+        ]
+        state_dict[f"{target}.swiglu.w1_weight.weight"]=weights[
+            f"{prefix}.ffn.w1.weight"
+        ]
+        state_dict[f"{target}.swiglu.w2_weight.weight"]=weights[
+            f"{prefix}.ffn.w2.weight"
+        ]
+        state_dict[f"{target}.swiglu.w3_weight.weight"]=weights[
+            f"{prefix}.ffn.w3.weight"
+        ]
+        state_dict[f"{target}.rmsnorm2.g"]=weights[
+            f"{prefix}.ln2.weight"
+        ]
+
+    state_dict["rms_norm.g"]=weights["ln_final.weight"]
+    state_dict["output_embedding.weight"]=weights["lm_head.weight"]
+
+    module.load_state_dict(state_dict)
+    return module(in_indices)
 
 def run_rmsnorm(
     d_model: int,

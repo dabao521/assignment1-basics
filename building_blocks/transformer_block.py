@@ -4,6 +4,7 @@ from jaxtyping import Float
 from building_blocks.multihead_attenion import MultiheadSelfAttentionModule
 from building_blocks.rmsnorm import RMSNormModule
 from building_blocks.swiglu import SwiGLUModule
+from building_blocks.rope import RoPEModule
 
 class TransformerBlock(nn.Module):
     # sub-layer 1: multihead self attention
@@ -23,6 +24,7 @@ class TransformerBlock(nn.Module):
         max_seq_len: int,
         device: torch.device | None = None,
         dtype: torch.dtype | None = None,
+        shared_rope: RoPEModule | None = None,
     ):
         """
         Args:
@@ -45,7 +47,8 @@ class TransformerBlock(nn.Module):
             device,
             dtype,
             theta,
-            max_seq_len
+            max_seq_len,
+            shared_rope = shared_rope
         )
         self.rmsnorm1 = RMSNormModule(d_model, device=device, dtype=dtype)
         

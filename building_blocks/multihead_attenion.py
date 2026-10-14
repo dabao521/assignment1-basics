@@ -22,6 +22,7 @@ class MultiheadSelfAttentionModule(nn.Module):
         dtype: torch.dtype | None = None,
         theta: float | None = None,
         max_seq_len: int | None = None,
+        shared_rope: RoPEModule | None = None,
     ):
         super().__init__()
         self.Wq = LinearModule(d_model, d_model, device, dtype)
@@ -33,7 +34,10 @@ class MultiheadSelfAttentionModule(nn.Module):
         if theta is not None:
             # setup rope
             assert max_seq_len is not None
+            assert shared_rope is None
             self.rope = RoPEModule(theta, d_model // num_heads, max_seq_len, device)
+        elif shared_rope is not None:
+            self.rope = shared_rope
 
         self.num_heads = num_heads
 
