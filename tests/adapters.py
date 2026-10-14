@@ -17,6 +17,7 @@ from building_blocks.swiglu import SwiGLUModule
 from building_blocks.rope import RoPEModule
 from building_blocks.common import softmax, scaled_dot_product_attention
 from building_blocks.multihead_attenion import MultiheadSelfAttentionModule
+from building_blocks.transformer_block import TransformerBlock
 
 def run_linear(
     d_in: int,
@@ -332,7 +333,28 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+    block = TransformerBlock(
+        d_model,
+        num_heads,
+        d_ff,
+        theta,
+        max_seq_len,
+    )
+
+    # replace the states
+    block.load_state_dict({
+        "multi_head_self_attention.Wq.weight": weights["attn.q_proj.weight"],
+        "multi_head_self_attention.Wk.weight": weights["attn.k_proj.weight"],
+        "multi_head_self_attention.Wv.weight": weights["attn.v_proj.weight"],
+        "multi_head_self_attention.Wo.weight": weights["attn.output_proj.weight"],
+        "rmsnorm1.g": weights["ln1.weight"],
+        "swiglu.w1_weight.weight": weights["ffn.w1.weight"],
+        "swiglu.w2_weight.weight": weights["ffn.w2.weight"],
+        "swiglu.w3_weight.weight": weights["ffn.w3.weight"],
+        "rmsnorm2.g": weights["ln2.weight"],
+    })
+
+    return block(in_features)
 
 
 def run_transformer_lm(
