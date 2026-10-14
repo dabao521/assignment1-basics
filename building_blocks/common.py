@@ -33,6 +33,8 @@ def scaled_dot_product_attention(
 
     # apply the mask if there is any
     # we add a -INF for those False element since e^INF = 0
+    # print("shape 1:", Q_K_sqrt.shape)
+    # print("shape 2:", mask.shape)
     if mask is not None:
         Q_K_sqrt = Q_K_sqrt.masked_fill(~mask, float("-inf"))
 

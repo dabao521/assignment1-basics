@@ -10,7 +10,7 @@ class LinearModule(nn.Module):
     def __init__(
         self,
         in_featurers: int,
-        out_features,
+        out_features: int,
         device: torch.device | None  = None,
         dtype: torch.dtype | None = None):
         """

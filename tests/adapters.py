@@ -16,6 +16,7 @@ from building_blocks.rmsnorm import RMSNormModule
 from building_blocks.swiglu import SwiGLUModule
 from building_blocks.rope import RoPEModule
 from building_blocks.common import softmax, scaled_dot_product_attention
+from building_blocks.multihead_attenion import MultiheadSelfAttentionModule
 
 def run_linear(
     d_in: int,
@@ -166,7 +167,20 @@ def run_multihead_self_attention(
         Float[Tensor, " ... sequence_length d_model"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    module = MultiheadSelfAttentionModule(
+        d_model,
+        num_heads,
+    ) 
+
+    # replace
+    module.load_state_dict({
+        "Wq.weight": q_proj_weight,
+        "Wk.weight": k_proj_weight,
+        "Wv.weight": v_proj_weight,
+        "Wo.weight": o_proj_weight,
+    })
+
+    return module(in_features)
 
 
 def run_multihead_self_attention_with_rope(
@@ -206,7 +220,22 @@ def run_multihead_self_attention_with_rope(
         Float[Tensor, " ... sequence_length d_model"]: Tensor with the output of running your optimized, batched multi-headed attention
         implementation with the given QKV projection weights and input features.
     """
-    raise NotImplementedError
+    module = MultiheadSelfAttentionModule(
+        d_model,
+        num_heads,
+        theta=theta,
+        max_seq_len=max_seq_len,
+    ) 
+
+    # replace
+    module.load_state_dict({
+        "Wq.weight": q_proj_weight,
+        "Wk.weight": k_proj_weight,
+        "Wv.weight": v_proj_weight,
+        "Wo.weight": o_proj_weight,
+    })
+
+    return module(in_features, token_positions)
 
 
 def run_rope(
