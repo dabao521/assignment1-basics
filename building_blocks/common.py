@@ -1,7 +1,8 @@
 import torch
-from jaxtyping import Bool, Float
+from jaxtyping import Bool, Float, Int
 from einops import einsum
 import math
+from torch import Tensor
 
 def softmax(x: torch.Tensor, i: int) -> torch.Tensor:
     """
@@ -45,4 +46,32 @@ def scaled_dot_product_attention(
         " ... queries keys, ... keys values -> ... queries values"
     )
     return output
+
+def cross_entropy_loss(
+    inputs: Float[Tensor, " batch_size vocab_size"],
+    targets: Int[Tensor, " batch_size"],
+) -> Float[Tensor, ""]:
+    # find vecab dimension's max value and keep that dimension
+    # later this will be deducted from all logits to keep the
+    # computation stable.
+    logits_max = inputs.amax(dim=-1, keepdim=True)
+
+    # normalize by deucting from max
+    logits_norm = inputs - logits_max
+
+    logits_exp = torch.exp(logits_norm)
+
+    # sumarize all logits for the vocab dimension and keep its dimension
+    log_sum = torch.log(logits_exp.sum(dim=-1, keepdim=True))
+
+    # select targetd indexed logits
+    # unsequzze is required to match the same input dimention
+    target_shift = torch.gather(
+        logits_norm,
+        dim=-1,
+        index=targets.unsqueeze(-1),
+    )
+
+    L = log_sum - target_shift
+    return L.mean()
 
