@@ -15,7 +15,7 @@ from building_blocks.embedding import Embedding
 from building_blocks.rmsnorm import RMSNormModule
 from building_blocks.swiglu import SwiGLUModule
 from building_blocks.rope import RoPEModule
-from building_blocks.common import softmax, scaled_dot_product_attention, cross_entropy_loss
+from building_blocks.common import softmax, scaled_dot_product_attention, cross_entropy_loss, get_lr_cosine_schedule
 from building_blocks.multihead_attenion import MultiheadSelfAttentionModule
 from building_blocks.transformer_block import TransformerBlock
 from building_blocks.transformer_lm import TransformerLM
@@ -637,7 +637,13 @@ def run_get_lr_cosine_schedule(
     Returns:
         Learning rate at the given iteration under the specified schedule.
     """
-    raise NotImplementedError
+    return get_lr_cosine_schedule(
+        it,
+        max_learning_rate,
+        min_learning_rate,
+        warmup_iters,
+        cosine_cycle_iters,
+    )
 
 
 def run_save_checkpoint(
