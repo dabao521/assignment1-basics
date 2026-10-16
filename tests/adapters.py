@@ -15,7 +15,7 @@ from building_blocks.embedding import Embedding
 from building_blocks.rmsnorm import RMSNormModule
 from building_blocks.swiglu import SwiGLUModule
 from building_blocks.rope import RoPEModule
-from building_blocks.common import softmax, scaled_dot_product_attention, cross_entropy_loss, get_lr_cosine_schedule, gradient_clipping
+from building_blocks.common import softmax, scaled_dot_product_attention, cross_entropy_loss, get_lr_cosine_schedule, gradient_clipping, get_batch
 from building_blocks.multihead_attenion import MultiheadSelfAttentionModule
 from building_blocks.transformer_block import TransformerBlock
 from building_blocks.transformer_lm import TransformerLM
@@ -556,7 +556,7 @@ def run_get_batch(
         is the sampled input sequences, and the second tuple item is the corresponding
         language modeling labels.
     """
-    raise NotImplementedError
+    return get_batch(dataset, batch_size, context_length, device)
 
 
 def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, " ..."]:

@@ -4,6 +4,8 @@ from einops import einsum
 import math
 from torch import Tensor
 from collections.abc import Iterable
+import numpy.typing as npt
+import numpy as np
 
 def softmax(x: torch.Tensor, i: int) -> torch.Tensor:
     """
@@ -116,3 +118,48 @@ def gradient_clipping(
     for p in valid_params:
         with torch.no_grad():
             p.grad.mul_(scale)
+
+def get_batch(
+    dataset: npt.NDArray,
+    batch_size: int,
+    context_length: int,
+    device: str,
+) -> tuple[Tensor, Tensor]:
+    """
+    first randomly pick batch_size number of start indexes for each sentence.
+    Random start is in the range of [0, n-contenxt_length). Exclusive here is for right shift
+
+    Returns:
+        a tuple of two matrixs (batch_size, context_length)
+        first matrix:  the matrix sliced based on the sampled start points
+        second matrix: first matrix + 1 right shift -> used as the target / expected next token
+    """
+
+    # create a random array
+    n = len(dataset)
+    # shape (batch_size,)
+    start_indexes = np.random.randint(0, n-context_length, dtype=int, size=batch_size)
+
+    # shape (context_length,)
+    ordinals = np.arange(context_length)
+
+    # shape (batch_size, context_length)
+    # expansion trick
+    # each row is [starti, starti+1, starti+2... starti+m-1]
+    indexes = start_indexes[:,None] + ordinals[None,:]
+
+    sampled = torch.as_tensor(
+        dataset[indexes],
+        dtype=torch.long,
+        device=device,
+    )
+    # shfit by 1 to find next token for each input token
+    shift = indexes + 1
+    target = torch.as_tensor(
+        dataset[shift],
+        dtype=torch.long,
+        device=device,
+        )
+    
+    return (sampled, target)
+

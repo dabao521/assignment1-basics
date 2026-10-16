@@ -80,4 +80,3 @@ def first_10_docs(input_filepath: str) -> list[str]:
                 docs.append(doc_str)
     return docs
 
-
