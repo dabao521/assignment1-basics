@@ -3,6 +3,7 @@ from jaxtyping import Bool, Float, Int
 from einops import einsum
 import math
 from torch import Tensor
+from collections.abc import Iterable
 
 def softmax(x: torch.Tensor, i: int) -> torch.Tensor:
     """
@@ -92,3 +93,26 @@ def get_lr_cosine_schedule(
         return lt
 
     return min_learning_rate
+
+def gradient_clipping(
+    parameters: Iterable[torch.nn.Parameter],
+    max_l2_norm: float,
+    eps: float = 1e-6,
+    ) -> None:
+    valid_params = [
+        p for p in parameters if p.grad is not None
+    ]
+
+    l2_norm = sum(
+        p.grad.square().sum()
+        for p in valid_params
+    )
+    l2_norm = torch.sqrt(l2_norm)
+    if l2_norm < max_l2_norm:
+        return
+
+    scale = max_l2_norm / (l2_norm + eps)
+
+    for p in valid_params:
+        with torch.no_grad():
+            p.grad.mul_(scale)

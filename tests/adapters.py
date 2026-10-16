@@ -15,7 +15,7 @@ from building_blocks.embedding import Embedding
 from building_blocks.rmsnorm import RMSNormModule
 from building_blocks.swiglu import SwiGLUModule
 from building_blocks.rope import RoPEModule
-from building_blocks.common import softmax, scaled_dot_product_attention, cross_entropy_loss, get_lr_cosine_schedule
+from building_blocks.common import softmax, scaled_dot_product_attention, cross_entropy_loss, get_lr_cosine_schedule, gradient_clipping
 from building_blocks.multihead_attenion import MultiheadSelfAttentionModule
 from building_blocks.transformer_block import TransformerBlock
 from building_blocks.transformer_lm import TransformerLM
@@ -602,7 +602,7 @@ def run_gradient_clipping(parameters: Iterable[torch.nn.Parameter], max_l2_norm:
 
     The gradients of the parameters (parameter.grad) should be modified in-place.
     """
-    raise NotImplementedError
+    return gradient_clipping(parameters, max_l2_norm)
 
 
 def get_adamw_cls() -> Any:
