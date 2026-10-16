@@ -19,6 +19,7 @@ from building_blocks.common import softmax, scaled_dot_product_attention, cross_
 from building_blocks.multihead_attenion import MultiheadSelfAttentionModule
 from building_blocks.transformer_block import TransformerBlock
 from building_blocks.transformer_lm import TransformerLM
+from building_blocks.adamW_optimizer import AdamWOptimizer
 
 def run_linear(
     d_in: int,
@@ -608,7 +609,7 @@ def get_adamw_cls() -> Any:
     """
     Returns a torch.optim.Optimizer that implements AdamW.
     """
-    raise NotImplementedError
+    return AdamWOptimizer
 
 
 def run_get_lr_cosine_schedule(
