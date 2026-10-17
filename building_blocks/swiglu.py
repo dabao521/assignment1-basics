@@ -18,9 +18,9 @@ class SwiGLUModule(nn.Module):
         dtype: torch.dtype | None = None,
     ):
         super().__init__()
-        self.w1_weight = LinearModule(d_model, d_ff)
-        self.w2_weight = LinearModule(d_ff, d_model)
-        self.w3_weight = LinearModule(d_model, d_ff)
+        self.w1_weight = LinearModule(d_model, d_ff, device=device)
+        self.w2_weight = LinearModule(d_ff, d_model, device=device)
+        self.w3_weight = LinearModule(d_model, d_ff, device=device)
 
     def forward(
         self,

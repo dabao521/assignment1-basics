@@ -15,7 +15,7 @@ from building_blocks.embedding import Embedding
 from building_blocks.rmsnorm import RMSNormModule
 from building_blocks.swiglu import SwiGLUModule
 from building_blocks.rope import RoPEModule
-from building_blocks.common import softmax, scaled_dot_product_attention, cross_entropy_loss, get_lr_cosine_schedule, gradient_clipping, get_batch
+from building_blocks.common import softmax, scaled_dot_product_attention, cross_entropy_loss, get_lr_cosine_schedule, gradient_clipping, get_batch, save_checkpoint, load_checkoint
 from building_blocks.multihead_attenion import MultiheadSelfAttentionModule
 from building_blocks.transformer_block import TransformerBlock
 from building_blocks.transformer_lm import TransformerLM
@@ -662,7 +662,7 @@ def run_save_checkpoint(
             we've completed.
         out (str | os.PathLike | BinaryIO | IO[bytes]): Path or file-like object to serialize the model, optimizer, and iteration to.
     """
-    raise NotImplementedError
+    save_checkpoint(model, optimizer, iteration, out)
 
 
 def run_load_checkpoint(
@@ -683,7 +683,7 @@ def run_load_checkpoint(
     Returns:
         int: the previously-serialized number of iterations.
     """
-    raise NotImplementedError
+    return load_checkoint(src, model, optimizer)
 
 
 def get_tokenizer(

@@ -78,7 +78,7 @@ class MultiheadSelfAttentionModule(nn.Module):
             Q_heads = self.rope(Q_heads, token_positions)
 
         # 4. crete a mask with shape [seq_len, seq_len] and mask lower diagonal part of it
-        mask: Bool[Tensor, " seq_len seq_len"] = self.create_mask(seq_len)
+        mask: Bool[Tensor, " seq_len seq_len"] = self.create_mask(seq_len, Q_heads.device)
 
         # 5 apply scaled_dot_product_attention
         # print("shape0: ", Q_heads.shape, K_heads.shape, self.num_heads, Q.shape)
@@ -97,11 +97,11 @@ class MultiheadSelfAttentionModule(nn.Module):
         # 7. apply Wo projection and return
         return self.Wo(attention)
 
-    def create_mask(self, seq_len: int) -> Bool[Tensor, " seq_len seq_len"]:
+    def create_mask(self, seq_len: int, device: torch.device) -> Bool[Tensor, " seq_len seq_len"]:
         # (seq_len,)
-        x = torch.arange(seq_len)
+        x = torch.arange(seq_len, device=device)
         # (seq_len,)
-        y = torch.arange(seq_len)
+        y = torch.arange(seq_len, device=device)
         # rearrange x and y
         # 
         # now x is (seq_len, 1)
