@@ -6,6 +6,7 @@ import numpy as np
 import numpy.typing as npt
 import torch
 import csv
+import time
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="CS336 Transformer Training")
@@ -99,6 +100,10 @@ def main() -> None:
             optimizer,
         )
 
+    if args.device == "mps":
+            torch.mps.synchronize()
+    start_time = time.perf_counter()
+
     for iteration in range(start_iteration, args.num_iterations):
         # 1. update learning rate
         lr = get_lr_cosine_schedule(
@@ -143,12 +148,15 @@ def main() -> None:
         # 9. periodic logging / validation / checkpointing
         step = iteration + 1
         if step % args.log_interval == 0:
+            if args.device == "mps":
+                torch.mps.synchronize()
+            elapsed_seconds = time.perf_counter() - start_time
             print(
                 f"step={iteration+1}, "
                 f"train_loss={loss.item():.4f}, "
                 f"lr={lr:6f}"
             )
-            train_losses.append((step, loss.item()))
+            train_losses.append((step, elapsed_seconds, loss.item()))
 
         if (
                 not args.overfit_one_batch
@@ -172,7 +180,10 @@ def main() -> None:
 
             model.train()
             val_loss = sum(losses) / len(losses)
-            val_losses.append((step, val_loss))
+            if args.device == "mps":
+                torch.mps.synchronize()
+            elapsed_seconds = time.perf_counter() - start_time
+            val_losses.append((step, elapsed_seconds, val_loss))
             print(f"step={iteration + 1}, val_loss={val_loss:.4f}")
 
         if (
@@ -194,16 +205,18 @@ def main() -> None:
             args.num_iterations,
             args.checkpoint_file,
         )
+
+    hyperparams: dict[str, str|int|float|bool] = vars(args)
     
     with open(args.log_file, "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["step", "type", "loss"])
+        writer.writerow(["step", "elapsed_seconds", "type", "loss", *hyperparams.keys()])
 
-        for step, loss in train_losses:
-            writer.writerow([step, "train", loss])
+        for step, elapsed, loss in train_losses:
+            writer.writerow([step, elapsed, "train", loss, *hyperparams.values()])
 
         for step, loss in val_losses:
-            writer.writerow([step, "val", loss])
+            writer.writerow([step, elapsed, "val", loss, *hyperparams.values()])
 
 if __name__ == "__main__":
     main()
