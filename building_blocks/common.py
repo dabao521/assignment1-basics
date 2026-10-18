@@ -8,6 +8,7 @@ import numpy.typing as npt
 import numpy as np
 import os
 import typing
+from torch import nn
 
 def softmax(x: torch.Tensor, i: int) -> torch.Tensor:
     """
@@ -188,4 +189,66 @@ def load_checkoint(
     model.load_state_dict(checkpoint["model"])
     optimizer.load_state_dict(checkpoint["optimizer"])
     return checkpoint["iteration"]
+
+def decode(
+    model: nn.Module,
+    prompt: Int[Tensor, " seq_len"],
+    max_num_tokens: int,
+    temperature: float,
+    top_p: float,
+    eos_token_id: int,
+    context_length: int,
+    ) -> Int[Tensor, " output_seq_len"]:
+    assert temperature > 0
+    assert top_p > 0 and top_p <= 1.0
+
+    model.eval()
+
+    # convert promt to shape (1, seq_len)
+    inputs: Int[Tensor, " batch_size seq_len"] = prompt.unsqueeze(0)
+    # make sure it is using the correct device
+    device = next(model.parameters()).device
+    inputs = inputs.to(device)
+
+    with torch.inference_mode():
+        for _ in range(max_num_tokens):
+            # forward path to get logits and we only care about the last row
+            logits: Float[Tensor, " vocab_size"] = model(inputs[:, -context_length:])[0,-1,:]
+
+            # apply temperature
+            logits = logits / temperature
+
+            # run softmax to get probability
+            q: Float[Tensor, " vocab_size"] = softmax(logits, -1)
+
+            # apply the top-p trick
+            # sort the the prob vector q in descending order
+            # both have shape (vocab_size,) and indces track positions from q
+            sorted_q, indices = torch.sort(q, descending=True)
+
+            # get running sum so that we have a chance know since which position it exceeds
+            # top_p prob
+            q_sum = torch.cumsum(sorted_q, dim=-1)
+
+            # the accumulate sum before including current token < top_p
+            # this will include the first elemet that crossed top_p
+            mask: Bool[Tensor, " vocab_size"] = (q_sum - sorted_q) < top_p
+            # this will remove those elements not in the V(p) set
+            sorted_q = sorted_q[mask]
+            # re-compute the new probability for each element
+            sorted_q = sorted_q / torch.sum(sorted_q)
+            # replace existing values
+            q[indices[mask]] = sorted_q
+            q[indices[~mask]] = 0.0
+
+            # shape (1,1), we concat it to inputs to shape ( 1, seq_len+1)
+            next_token = torch.multinomial(q, num_samples=1).unsqueeze(0)
+            inputs = torch.cat((inputs, next_token), -1)
+
+            if next_token[0][0] == eos_token_id:
+                break
+        # shape back to (seq_len,)
+        inputs = inputs.squeeze(0)
+        assert inputs.device == device
+        return inputs
 
