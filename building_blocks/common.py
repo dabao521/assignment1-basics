@@ -50,7 +50,7 @@ def scaled_dot_product_attention(
         soft_max,
         V,
         " ... queries keys, ... keys values -> ... queries values"
-    )
+    ).to(V.dtype)
     return output
 
 def cross_entropy_loss(

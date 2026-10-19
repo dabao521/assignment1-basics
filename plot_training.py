@@ -59,8 +59,8 @@ for row in rows:
         val_losses.append(loss)
 
 fig, ax = plt.subplots(figsize=(12, 6))
-ax.plot(train_x, train_losses, label="Training loss")
-ax.plot(val_x, val_losses, label="Validation loss")
+ax.plot(train_x, train_losses, marker="o", label="Training loss")
+ax.plot(val_x, val_losses, marker="o", label="Validation loss")
 
 if args.x_axis == "step":
     ax.set_xlabel("Gradient steps")

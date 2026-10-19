@@ -8,6 +8,16 @@ import torch
 import csv
 import time
 
+MAX_TRAINING_SECONDS: float = 45 * 60
+FINALIZATION_BUFFER_SECONDS: float = 60.0
+
+def synchronize_device(device: str) -> None:
+    if device.startswith("cuda"):
+        torch.cuda.synchronize()
+    elif device == "mps":
+        torch.mps.synchronize()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="CS336 Transformer Training")
 
@@ -51,6 +61,10 @@ def main() -> None:
     parser.add_argument("--checkpoint-file", type=str, default=None)
 
     args = parser.parse_args()
+    use_bf16: bool = args.device.startswith("cuda")
+    if use_bf16:
+        assert torch.cuda.is_bf16_supported(), "CUDA device doesn't suppor BF16"
+
     print(f"input hyper parameters: {args}")
 
     model = TransformerLM(
@@ -89,8 +103,8 @@ def main() -> None:
             args.device,
         )
 
-    train_losses: list[tuple[int,float]] = []
-    val_losses: list[tuple[int,float]] = []
+    train_losses: list[tuple[int,float,float]] = []
+    val_losses: list[tuple[int,float,float]] = []
 
     start_iteration:int = 0
     if args.resume_from is not None:
@@ -100,11 +114,25 @@ def main() -> None:
             optimizer,
         )
 
-    if args.device == "mps":
-            torch.mps.synchronize()
+    synchronize_device(args.device)
     start_time = time.perf_counter()
+    deadline:float = start_time + MAX_TRAINING_SECONDS
+    training_deadline: float = (
+        deadline - FINALIZATION_BUFFER_SECONDS
+    )
+    last_step: int = start_iteration
 
     for iteration in range(start_iteration, args.num_iterations):
+        synchronize_device(args.device)
+        current_time: float = time.perf_counter()
+        if current_time >= training_deadline:
+            print(
+                f"Training deadline reached at step {last_step}. "
+                f"Elapsed: {current_time - start_time:.2f}s",
+                flush=True,
+            )
+            break
+
         # 1. update learning rate
         lr = get_lr_cosine_schedule(
             iteration,
@@ -127,11 +155,20 @@ def main() -> None:
                 args.device,
             )
 
-        # 3. forward pass
-        logits = model(inputs)
+        with torch.autocast(
+            device_type="cuda",
+            dtype=torch.bfloat16,
+            enabled=use_bf16,
+        ):
+            # 3. forward pass
+            logits = model(inputs)
 
-        # 4. compute the cross-entropy loss
-        loss = cross_entropy_loss(logits, targets)
+            if iteration == 0:
+                print(f"Logits dtype: {logits.dtype}")
+                print(f"Model weights dtype: {next(model.parameters()).dtype}")
+
+            # 4. compute the cross-entropy loss
+            loss = cross_entropy_loss(logits.float(), targets)
 
         # 5. clear previous gradients
         optimizer.zero_grad(set_to_none=True)
@@ -147,13 +184,14 @@ def main() -> None:
 
         # 9. periodic logging / validation / checkpointing
         step = iteration + 1
+        last_step = step
         if step % args.log_interval == 0:
-            if args.device == "mps":
-                torch.mps.synchronize()
+            synchronize_device(args.device)
             elapsed_seconds = time.perf_counter() - start_time
             print(
                 f"step={iteration+1}, "
                 f"train_loss={loss.item():.4f}, "
+                f"elapsed={elapsed_seconds} seconds, "
                 f"lr={lr:6f}"
             )
             train_losses.append((step, elapsed_seconds, loss.item()))
@@ -161,6 +199,7 @@ def main() -> None:
         if (
                 not args.overfit_one_batch
                 and step % args.eval_interval == 0
+                and time.perf_counter() < training_deadline
             ):
             model.eval()
 
@@ -168,23 +207,33 @@ def main() -> None:
 
             with torch.no_grad():
                 for _ in range(args.eval_batches):
+                    synchronize_device(args.device)
+                    if time.perf_counter() >= training_deadline:
+                        break
+
                     val_inputs, val_targets = get_batch(
                         val_data,
                         args.batch_size,
                         args.context_length,
                         args.device,
                     )
-                    val_logits = model(val_inputs)
-                    val_loss = cross_entropy_loss(val_logits, val_targets)
+                    with torch.autocast(
+                        device_type="cuda",
+                        dtype=torch.bfloat16,
+                        enabled=use_bf16,
+                    ):
+                        val_logits = model(val_inputs)
+                        val_loss = cross_entropy_loss(val_logits.float(), val_targets)
                     losses.append(val_loss.item())
 
             model.train()
-            val_loss = sum(losses) / len(losses)
-            if args.device == "mps":
-                torch.mps.synchronize()
-            elapsed_seconds = time.perf_counter() - start_time
-            val_losses.append((step, elapsed_seconds, val_loss))
-            print(f"step={iteration + 1}, val_loss={val_loss:.4f}")
+
+            if losses:
+                synchronize_device(args.device)
+                val_loss = sum(losses) / len(losses)
+                elapsed_seconds = time.perf_counter() - start_time
+                val_losses.append((step, elapsed_seconds, val_loss))
+                print(f"step={iteration + 1}, val_loss={val_loss:.4f}")
 
         if (
             args.checkpoint_file is not None
@@ -202,7 +251,7 @@ def main() -> None:
         save_checkpoint(
             model,
             optimizer,
-            args.num_iterations,
+            last_step,
             args.checkpoint_file,
         )
 
@@ -215,7 +264,7 @@ def main() -> None:
         for step, elapsed, loss in train_losses:
             writer.writerow([step, elapsed, "train", loss, *hyperparams.values()])
 
-        for step, loss in val_losses:
+        for step, elapsed, loss in val_losses:
             writer.writerow([step, elapsed, "val", loss, *hyperparams.values()])
 
 if __name__ == "__main__":

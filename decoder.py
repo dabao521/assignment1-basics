@@ -27,20 +27,22 @@ def main() -> None:
     prompt_ids = tokenizer.encode(args.prompt)
     prompt_tokens: Tensor = torch.tensor(prompt_ids, dtype=torch.long)
 
+    device = "cpu" if torch.cuda.is_available() else "cpu"
+
     model = TransformerLM(
-        vocab_size=10000,
-        context_length=256,
-        d_model=256,
-        num_layers=4,
-        num_heads=4,
-        d_ff=1024,
-        theta=1000,
-        device=torch.device("mps"),
+        vocab_size=32000,
+        context_length=512,
+        d_model=640,
+        num_layers=12,
+        num_heads=10,
+        d_ff=1728,
+        theta=10000,
+        device=device,
     )
 
     checkpoint = torch.load(
         args.checkpoint_path,
-        map_location="mps",
+        map_location=device,
         weights_only=True,
     )
     model.load_state_dict(checkpoint["model"])

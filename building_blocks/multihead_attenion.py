@@ -73,7 +73,7 @@ class MultiheadSelfAttentionModule(nn.Module):
         # 3. apply rope Q and K only if thea set before set
         if self.rope is not None:
             if token_positions is None:
-                token_positions = torch.arange(seq_len)
+                token_positions = torch.arange(seq_len, device=Q_heads.device)
             K_heads = self.rope(K_heads, token_positions)
             Q_heads = self.rope(Q_heads, token_positions)
 
