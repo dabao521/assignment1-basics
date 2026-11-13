@@ -164,3 +164,4 @@ cython_debug/
 
 *.swp
 data/
+tinystories_dff1024.pt
